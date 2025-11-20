@@ -14,7 +14,7 @@ Run program with
 ./run.sh [args]
 ```
 
-Note: Ensure that tkinter is installed with your base python installation, otherwise you may run into dependency errors.
+Note: Python version >=3.10 required. Ensure that tkinter is installed with your base python installation, otherwise you may run into dependency errors.
 *This comes pre-installed by default unless python was installed with a package manager like Homebrew on macOS*
 
 ## Development Information
