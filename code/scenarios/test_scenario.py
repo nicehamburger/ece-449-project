@@ -6,7 +6,7 @@
 import time
 
 from kesslergame import Scenario, KesslerGame, GraphicsType
-from controllers.scott_dick_controller import ScottDickController
+from controllers.proj_controller import ProjectController
 from controllers.test_controller import TestController
 from graphics_both import GraphicsBoth
 
@@ -35,8 +35,8 @@ def run():
 
     # Evaluate the game
     pre = time.perf_counter()
-    # Runs the test controller against Scott Dick Controller head 2 head
-    score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), ScottDickController()])
+    # Runs the project controller against the test controller head 2 head
+    score, perf_data = game.run(scenario=my_test_scenario, controllers=[ProjectController(), TestController()])
 
     # Print out some general info about the result
     print('Scenario eval time: '+str(time.perf_counter()-pre))

@@ -1,4 +1,9 @@
-# ece-449-project
+# ECE449-project
+
+### Group:
+| Jeremy Carefoot |
+| Raashid Hamdan |
+| Zeeshan Haque |
 
 ## Quick-Start Guide
 
