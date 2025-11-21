@@ -1,7 +1,7 @@
 # ECE449-project
 
 ### Group:
-| ***Name** |
+| **Name** |
 | -------- |
 | Jeremy Carefoot |
 | Raashid Hamdan |
