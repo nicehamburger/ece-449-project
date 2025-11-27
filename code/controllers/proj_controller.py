@@ -20,25 +20,23 @@ class ProjectController(KesslerController):
         """
         self.max_bullet_count = None
 
-        # Shared antecedents initialized here
-        self.closest_a_dist = ctrl.Antecedent(np.arange(0, 1000, 1), 'closest_a_dist')
-
-        # Fuzzy closest asteroid distance
-        self.closest_a_dist['S'] = fuzz.zmf(self.closest_a_dist.universe, 0, 150)
-        self.closest_a_dist['M'] = fuzz.trimf(self.closest_a_dist.universe, [0, 250, 500])
-        self.closest_a_dist['L'] = fuzz.smf(self.closest_a_dist.universe, 250, 1000)
-
         self.setup_mine_control()
         self.setup_fire_control()
 
     def setup_mine_control(self):
         ship_thrust = ctrl.Antecedent(np.arange(0, 480, 1), 'ship_thrust')
+        mass_density = ctrl.Antecedent(np.arange(0, 0.1, 0.001), 'mass_density')
         drop_mine = ctrl.Consequent(np.arange(-1, 1, 0.1), 'drop_mine')
 
         # Fuzzy sets for ship thrust
         ship_thrust['S'] = fuzz.zmf(ship_thrust.universe, 0, 50)
         ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [0, 200, 300])
         ship_thrust['L'] = fuzz.smf(ship_thrust.universe, 200, 480)
+
+        # Fuzzy sets for mass density
+        mass_density['S'] = fuzz.zmf(mass_density.universe, 0, 0.01)
+        mass_density['M'] = fuzz.trimf(mass_density.universe, [0, 0.02, 0.04])
+        mass_density['L'] = fuzz.smf(mass_density.universe, 0.03, 0.1)
 
         # Fuzzy set for consequent (drop mine or not)
         drop_mine['N'] = fuzz.trimf(drop_mine.universe, [-1, -1, 0.0])
@@ -47,9 +45,9 @@ class ProjectController(KesslerController):
         # Declare fuzzy rules
         rules = [
             ctrl.Rule(ship_thrust['S'], drop_mine['N']),
-            ctrl.Rule(ship_thrust['M'] & (self.closest_a_dist['L'] | self.closest_a_dist['M']), drop_mine['N']),
-            ctrl.Rule(ship_thrust['L'] & (self.closest_a_dist['L'] | self.closest_a_dist['M']), drop_mine['N']),
-            ctrl.Rule((ship_thrust['M'] | ship_thrust['L']) & self.closest_a_dist['S'], drop_mine['Y']),
+            ctrl.Rule(ship_thrust['M'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
+            ctrl.Rule(ship_thrust['L'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
+            ctrl.Rule((ship_thrust['M'] | ship_thrust['L']) & mass_density['L'], drop_mine['Y']),
         ]
 
         self.mine_control = ctrl.ControlSystem(rules)
@@ -57,11 +55,17 @@ class ProjectController(KesslerController):
     def setup_fire_control(self):
         ammo = ctrl.Antecedent(np.arange(0, 1, 0.01), 'ammo')
         fire_gun = ctrl.Consequent(np.arange(-1, 1, 0.1), 'fire_gun')
+        closest_a_dist = ctrl.Antecedent(np.arange(0, 1000, 1), 'closest_a_dist')
 
         # Fuzzy sets for ammo
         ammo['L'] = fuzz.zmf(ammo.universe, 0, 0.2)
         ammo['M'] = fuzz.trimf(ammo.universe, [0, 0.4, 0.7])
         ammo['H'] = fuzz.smf(ammo.universe, 0.4, 1.0)
+
+        # Fuzzy sets for closest asteroid distance
+        closest_a_dist['S'] = fuzz.zmf(closest_a_dist.universe, 0, 150)
+        closest_a_dist['M'] = fuzz.trimf(closest_a_dist.universe, [0, 250, 500])
+        closest_a_dist['L'] = fuzz.smf(closest_a_dist.universe, 250, 1000)
 
         # Fuzzy set for consequent (fire gun or not)
         fire_gun['N'] = fuzz.trimf(fire_gun.universe, [-1, -1, 0.0])
@@ -70,18 +74,20 @@ class ProjectController(KesslerController):
         # Declare fuzzy rules
         rules = [
             ctrl.Rule(ammo['H'] | ammo['M'], fire_gun['Y']),
-            ctrl.Rule(ammo['L'] & (self.closest_a_dist['L'] | self.closest_a_dist['M']), fire_gun['N']),
-            ctrl.Rule(ammo['L'] & self.closest_a_dist['S'], fire_gun['Y'])
+            ctrl.Rule(ammo['L'] & (closest_a_dist['L'] | closest_a_dist['M']), fire_gun['N']),
+            ctrl.Rule(ammo['L'] & closest_a_dist['S'], fire_gun['Y'])
         ]
 
         self.fire_control = ctrl.ControlSystem(rules)
 
-    def get_closest_asteroid(self, asteroids: list, ship_x: float, ship_y: float) -> dict:
+    def collect_asteroid_data(self, asteroids: list, ship_x: float, ship_y: float) -> dict:
         """
-        Gets closest asteroid to the ship coordinates provided
-        Uses euclidian distance
+        Collects asteroid data in one frame of the game
+        Data includes local mass density to the ship and closest asteroid data
         """
+        DENSITY_RADIUS = 150
         closest_asteroid = None
+        total_mass = 0
 
         # Finds closest asteroid
         for a in asteroids:
@@ -90,6 +96,9 @@ class ProjectController(KesslerController):
 
             if closest_asteroid is None :
                 closest_asteroid = dict(aster = a, dist = curr_dist)
+
+            if curr_dist < DENSITY_RADIUS:
+                total_mass += a["mass"]
                 
             else:    
                 # closest_asteroid exists, and is thus initialized. 
@@ -97,7 +106,14 @@ class ProjectController(KesslerController):
                     # New minimum found
                     closest_asteroid["aster"] = a
                     closest_asteroid["dist"] = curr_dist
-        return closest_asteroid
+
+        density_area = math.pi * (DENSITY_RADIUS ** 2)
+        density = total_mass / density_area
+
+        return {
+            "closest_asteroid": closest_asteroid,
+            "mass_density": density
+        }
 
 
     def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool, bool]:
@@ -113,7 +129,10 @@ class ProjectController(KesslerController):
         if self.max_bullet_count is None:
             self.max_bullet_count = current_ammo
 
-        closest_asteroid = self.get_closest_asteroid(game_state["asteroids"], ship_x, ship_y)
+        asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
+
+        closest_asteroid = asteroid_data["closest_asteroid"]
+        mass_density = asteroid_data["mass_density"]
         ammo_ratio = current_ammo / self.max_bullet_count if current_ammo != -1 else 1.0
 
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control,flush_after_run=1)
@@ -125,7 +144,7 @@ class ProjectController(KesslerController):
 
         # Calculate if mine should be dropped
         mine_sys.inputs({
-            'closest_a_dist': closest_asteroid['dist'],
+            'mass_density': mass_density,
             'ship_thrust': abs(thrust)
         })
         mine_sys.compute()
