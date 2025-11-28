@@ -12,6 +12,7 @@ from typing import Dict, Tuple
 from skfuzzy import control as ctrl
 from kesslergame import KesslerController
 
+
 class ProjectController(KesslerController):
 
     def __init__(self):
@@ -24,10 +25,9 @@ class ProjectController(KesslerController):
         self.setup_mine_control()
         self.setup_fire_control()
         self.setup_thrust_avoidance_control()
-        self.setup_turn_and_fire_control()
+        self.setup_turn_and_fire_control() 
 
-# Jeremy IMPLEMENTATION
-    
+    # ---------------------- MINE CONTROL ---------------------- #
     def setup_mine_control(self):
         ship_thrust = ctrl.Antecedent(np.arange(0, 480, 1), 'ship_thrust')
         mass_density = ctrl.Antecedent(np.arange(0, 0.1, 0.001), 'mass_density')
@@ -45,7 +45,7 @@ class ProjectController(KesslerController):
 
         # Fuzzy set for consequent (drop mine or not)
         drop_mine['N'] = fuzz.trimf(drop_mine.universe, [-1, -1, 0.0])
-        drop_mine['Y'] = fuzz.trimf(drop_mine.universe, [0.0, 1, 1]) 
+        drop_mine['Y'] = fuzz.trimf(drop_mine.universe, [0.0, 1, 1])
 
         # Declare fuzzy rules
         rules = [
@@ -57,6 +57,7 @@ class ProjectController(KesslerController):
 
         self.mine_control = ctrl.ControlSystem(rules)
 
+    # ---------------------- FIRE CONTROL ---------------------- #
     def setup_fire_control(self):
         ammo = ctrl.Antecedent(np.arange(0, 1, 0.01), 'ammo')
         fire_gun = ctrl.Consequent(np.arange(-1, 1, 0.1), 'fire_gun')
@@ -74,7 +75,7 @@ class ProjectController(KesslerController):
 
         # Fuzzy set for consequent (fire gun or not)
         fire_gun['N'] = fuzz.trimf(fire_gun.universe, [-1, -1, 0.0])
-        fire_gun['Y'] = fuzz.trimf(fire_gun.universe, [0.0, 1, 1]) 
+        fire_gun['Y'] = fuzz.trimf(fire_gun.universe, [0.0, 1, 1])
 
         # Declare fuzzy rules
         rules = [
@@ -85,16 +86,54 @@ class ProjectController(KesslerController):
 
         self.fire_control = ctrl.ControlSystem(rules)
 
+    # ---------------------- THRUST CONTROL ---------------------- #
+    def setup_thrust_control(self):
+        # Fuzzy input variables
+        distance = ctrl.Antecedent(np.arange(0, 1001, 1), 'distance')
+        vert_offset = ctrl.Antecedent(np.arange(-500, 501, 1), 'vert_offset')
+
+        # Fuzzy output variable
+        thrust = ctrl.Consequent(np.arange(-480, 481, 1), 'thrust')
+
+        # Distance membership functions
+        distance['near'] = fuzz.trimf(distance.universe, [0, 0, 300])
+        distance['mid'] = fuzz.trimf(distance.universe, [100, 500, 800])
+        distance['far'] = fuzz.trimf(distance.universe, [500, 1000, 1000])
+
+        # Vertical offset membership functions
+        vert_offset['below'] = fuzz.trimf(vert_offset.universe, [-500, -500, 0])
+        vert_offset['center'] = fuzz.trimf(vert_offset.universe, [-50, 0, 50])
+        vert_offset['above'] = fuzz.trimf(vert_offset.universe, [0, 500, 500])
+
+        # Thrust membership functions
+        thrust['high_up'] = fuzz.trimf(thrust.universe, [150, 480, 480])
+        thrust['medium_up'] = fuzz.trimf(thrust.universe, [50, 200, 350])
+        thrust['none'] = fuzz.trimf(thrust.universe, [-50, 0, 50])
+        thrust['medium_down'] = fuzz.trimf(thrust.universe, [-350, -200, -50])
+        thrust['high_down'] = fuzz.trimf(thrust.universe, [-480, -480, -150])
+
+        thrust_rules = [
+            ctrl.Rule(distance['near'] & vert_offset['above'], thrust['high_down']),
+            ctrl.Rule(distance['near'] & vert_offset['below'], thrust['high_up']),
+            ctrl.Rule(distance['mid'] & vert_offset['above'], thrust['medium_down']),
+            ctrl.Rule(distance['mid'] & vert_offset['below'], thrust['medium_up']),
+            ctrl.Rule(distance['far'], thrust['none']),
+            ctrl.Rule(vert_offset['center'], thrust['none'])
+        ]
+
+        self.thrust_control = ctrl.ControlSystem(thrust_rules)
+
+    # ---------------------- ASTEROID DATA ---------------------- #
     def collect_asteroid_data(self, asteroids: list, ship_x: float, ship_y: float) -> dict:
         """
-        Collects asteroid data in one frame of the game
-        Data includes local mass density to the ship and closest asteroid data
+        Collects asteroid data in one frame of the game.
+        Data includes local mass density to the ship and closest asteroid data.
         """
         DENSITY_RADIUS = 150
         closest_asteroid = None
         total_mass = 0
 
-        # Finds closest asteroid
+        # Find closest asteroid and compute local mass density
         for a in asteroids:
             ay = a["position"][1]
             ax = a["position"][0]
@@ -116,14 +155,12 @@ class ProjectController(KesslerController):
                     closest_asteroid["vert_offset"] = ay - ship_y
 
         density_area = math.pi * (DENSITY_RADIUS ** 2)
-        density = total_mass / density_area
+        density = total_mass / density_area if density_area > 0 else 0.0
 
         return {
             "closest_asteroid": closest_asteroid,
             "mass_density": density
         }
-
-# Zeeshan Implementation
 
     def setup_thrust_avoidance_control(self):
         # Fuzzy input variables
@@ -457,7 +494,8 @@ class ProjectController(KesslerController):
         current_ammo = ship_state["bullets_remaining"]
 
         if self.max_bullet_count is None:
-            self.max_bullet_count = current_ammo
+            # Avoid division by zero later
+            self.max_bullet_count = current_ammo if current_ammo > 0 else 1
 
         asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
         mass_density = asteroid_data["mass_density"]
@@ -507,6 +545,17 @@ class ProjectController(KesslerController):
                 turn_rate, fire = self.find_turn_rate_fire(ship_x, ship_y, closest_asteroid, ship_state)
             else:
                 turn_rate, fire = 0, False
+        closest_asteroid = asteroid_data["closest_asteroid"]
+        mass_density = asteroid_data["mass_density"]
+
+        # Ammo ratio: if infinite ammo (-1), treat as full (1.0)
+        if current_ammo == -1:
+            ammo_ratio = 1.0
+        else:
+            ammo_ratio = current_ammo / self.max_bullet_count if self.max_bullet_count > 0 else 0.0
+
+        mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
+        fire_sys = ctrl.ControlSystemSimulation(self.fire_control, flush_after_run=1)
 
         # Mine deployment logic
         # ammo_ratio = current_ammo / self.max_bullet_count if current_ammo != -1 else 1.0
