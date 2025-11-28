@@ -34,8 +34,8 @@ class ProjectController(KesslerController):
         drop_mine = ctrl.Consequent(np.arange(-1, 1, 0.1), 'drop_mine')
 
         # Fuzzy sets for ship thrust
-        ship_thrust['S'] = fuzz.zmf(ship_thrust.universe, 0, 50)
-        ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [0, 200, 300])
+        ship_thrust['S'] = fuzz.zmf(ship_thrust.universe, 0, 125)
+        ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [75, 200, 300])
         ship_thrust['L'] = fuzz.smf(ship_thrust.universe, 200, 480)
 
         # Fuzzy sets for mass density
