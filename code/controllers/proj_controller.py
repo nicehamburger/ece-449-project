@@ -545,21 +545,15 @@ class ProjectController(KesslerController):
                 turn_rate, fire = self.find_turn_rate_fire(ship_x, ship_y, closest_asteroid, ship_state)
             else:
                 turn_rate, fire = 0, False
-        closest_asteroid = asteroid_data["closest_asteroid"]
-        mass_density = asteroid_data["mass_density"]
 
         # Ammo ratio: if infinite ammo (-1), treat as full (1.0)
+        ammo_ratio = 0.0
         if current_ammo == -1:
             ammo_ratio = 1.0
         else:
             ammo_ratio = current_ammo / self.max_bullet_count if self.max_bullet_count > 0 else 0.0
 
-        mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
-        fire_sys = ctrl.ControlSystemSimulation(self.fire_control, flush_after_run=1)
-
-        # Mine deployment logic
-        # ammo_ratio = current_ammo / self.max_bullet_count if current_ammo != -1 else 1.0
-
+        # Mine drop logic
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
         mine_sys.inputs({
             'mass_density': mass_density,
