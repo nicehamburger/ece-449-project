@@ -11,6 +11,7 @@
 
 To setup project and run program:
 
+### Linux/macOS
 Install dependencies with
 ```bash
 make
@@ -20,6 +21,18 @@ Run program with
 ```bash
 ./run.sh [args]
 ```
+
+### Windows
+Install dependencies with
+```powershell
+.\build.ps1
+``` 
+
+Run program with
+```powershell
+.\run.ps1 [args]
+```
+
 
 Note: Python version >=3.10 required. Ensure that tkinter is installed with your base python installation, otherwise you may run into dependency errors.
 *This comes pre-installed by default unless python was installed with a package manager like Homebrew on macOS*
