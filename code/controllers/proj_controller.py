@@ -96,11 +96,13 @@ class ProjectController(KesslerController):
 
         # Finds closest asteroid
         for a in asteroids:
+            ay = a["position"][1]
+            ax = a["position"][0]
             # euclidian distance
-            curr_dist = math.sqrt((ship_x - a["position"][0])**2 + (ship_y - a["position"][1])**2)
+            curr_dist = math.hypot(ship_x - ax, ship_y - ay)
 
-            if closest_asteroid is None :
-                closest_asteroid = dict(aster = a, dist = curr_dist)
+            if closest_asteroid is None:
+                closest_asteroid = dict(aster = a, dist = curr_dist, vert_offset = ay - ship_y)
 
             if curr_dist < DENSITY_RADIUS:
                 total_mass += a["mass"]
@@ -111,6 +113,7 @@ class ProjectController(KesslerController):
                     # New minimum found
                     closest_asteroid["aster"] = a
                     closest_asteroid["dist"] = curr_dist
+                    closest_asteroid["vert_offset"] = ay - ship_y
 
         density_area = math.pi * (DENSITY_RADIUS ** 2)
         density = total_mass / density_area
@@ -149,15 +152,17 @@ class ProjectController(KesslerController):
         thrust['high_down'] = fuzz.trimf(thrust.universe, [-480, -480, -150])
 
         # Define fuzzy rules
-        rule1 = ctrl.Rule(distance['near'] & vert_offset['above'], thrust['high_down'])
-        rule2 = ctrl.Rule(distance['near'] & vert_offset['below'], thrust['high_up'])
-        rule3 = ctrl.Rule(distance['mid'] & vert_offset['above'], thrust['medium_down'])
-        rule4 = ctrl.Rule(distance['mid'] & vert_offset['below'], thrust['medium_up'])
-        rule5 = ctrl.Rule(distance['far'], thrust['none'])
-        rule6 = ctrl.Rule(vert_offset['center'], thrust['none'])
+        rules = [
+            ctrl.Rule(distance['near'] & vert_offset['above'], thrust['high_down']),
+            ctrl.Rule(distance['near'] & vert_offset['below'], thrust['high_up']),
+            ctrl.Rule(distance['mid'] & vert_offset['above'], thrust['medium_down']),
+            ctrl.Rule(distance['mid'] & vert_offset['below'], thrust['medium_up']),
+            ctrl.Rule(distance['far'], thrust['none']),
+            ctrl.Rule(vert_offset['center'], thrust['none'])
+        ]
 
         # Create the fuzzy control system and simulation
-        self.avoidance_control = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6])
+        self.avoidance_control = ctrl.ControlSystem(rules)
         self.avoidance_sim = ctrl.ControlSystemSimulation(self.avoidance_control)
 
 # HR IMPLEMENTATION
@@ -204,46 +209,31 @@ class ProjectController(KesslerController):
         ship_fire['Y'] = fuzz.trimf(ship_fire.universe, [0.0,1,1]) 
                 
         # Declare each fuzzy rule
-        rule1 = ctrl.Rule(bullet_time['L'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N']))
-        rule2 = ctrl.Rule(bullet_time['L'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N']))
-        rule3 = ctrl.Rule(bullet_time['L'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
+        rules = [
+            ctrl.Rule(bullet_time['L'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['L'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['L'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y'])),
 
-        rule5 = ctrl.Rule(bullet_time['L'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
-        rule6 = ctrl.Rule(bullet_time['L'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N']))
-        rule7 = ctrl.Rule(bullet_time['L'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N']))
-        rule8 = ctrl.Rule(bullet_time['M'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N']))
-        rule9 = ctrl.Rule(bullet_time['M'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N']))
-        rule10 = ctrl.Rule(bullet_time['M'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
+            ctrl.Rule(bullet_time['L'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['L'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['L'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['M'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['M'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['M'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y'])),
 
-        rule12 = ctrl.Rule(bullet_time['M'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
-        rule13 = ctrl.Rule(bullet_time['M'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N']))
-        rule14 = ctrl.Rule(bullet_time['M'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N']))
-        rule15 = ctrl.Rule(bullet_time['S'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['Y']))
-        rule16 = ctrl.Rule(bullet_time['S'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['Y']))
-        rule17 = ctrl.Rule(bullet_time['S'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
+            ctrl.Rule(bullet_time['M'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['M'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['M'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N'])),
+            ctrl.Rule(bullet_time['S'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['S'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['S'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y'])),
 
-        rule19 = ctrl.Rule(bullet_time['S'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
-        rule20 = ctrl.Rule(bullet_time['S'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['Y']))
-        rule21 = ctrl.Rule(bullet_time['S'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['Y']))
+            ctrl.Rule(bullet_time['S'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['S'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['Y'])),
+            ctrl.Rule(bullet_time['S'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['Y']))
+        ]
 
-        self.targeting_control = ctrl.ControlSystem([rule1, rule2, rule3, rule5, rule6, rule7, rule8, rule9, rule10, rule12, rule13, rule14, rule15, rule16, rule17, rule19, rule20, rule21])
-
-    def find_closest_asteroid(self, ship_pos_x, ship_pos_y, game_state: Dict):
-        closest_asteroid = None
-        # Iterate through asteroids
-        for a in game_state["asteroids"]:
-            # Calculate distance between ship and asteroid
-            curr_dist = math.sqrt((ship_pos_x - a["position"][0])**2 + (ship_pos_y - a["position"][1])**2)
-            # If closest_asteroid is None, initialize it
-            if closest_asteroid is None:
-                closest_asteroid = dict(aster = a, dist = curr_dist)
-            # Compare distances to find the closest asteroid
-            else:
-                if closest_asteroid["dist"] > curr_dist:
-                    # New minimum found
-                    closest_asteroid["aster"] = a
-                    closest_asteroid["dist"] = curr_dist
-        return closest_asteroid
+        self.targeting_control = ctrl.ControlSystem(rules)
     
     def find_turn_rate_fire(self, ship_pos_x, ship_pos_y, closest_asteroid, ship_state: Dict):
         asteroid_ship_x = ship_pos_x - closest_asteroid["aster"]["position"][0] # type: ignore
@@ -466,8 +456,14 @@ class ProjectController(KesslerController):
         ship_y = ship_state["position"][1]
         current_ammo = ship_state["bullets_remaining"]
 
+        if self.max_bullet_count is None:
+            self.max_bullet_count = current_ammo
+
+        asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
+        mass_density = asteroid_data["mass_density"]
+        closest_asteroid = asteroid_data["closest_asteroid"]
+
         # Categorize all asteroids by threat level
-        closest_asteroid = self.find_closest_asteroid(ship_x, ship_y, game_state)
         critical_threats, moderate_threats, safe_targets = self.categorize_asteroids(ship_state, game_state)
         
         # PRIORITY 1: Evasion if threats exist
@@ -496,16 +492,9 @@ class ProjectController(KesslerController):
         # PRIORITY 2: Offensive targeting when safe
         else:
             # Use existing avoidance for thrust (but less aggressive when safe)
-            nearest_dist = float('inf')
-            vert_offset = 0
-            for ast in game_state["asteroids"]:
-                ax, ay = ast["position"]
-                dist = math.hypot(ax - ship_x, ay - ship_y)
-                if dist < nearest_dist:
-                    nearest_dist = dist
-                    vert_offset = ay - ship_y
-
-            if nearest_dist == float('inf'):
+            nearest_dist = closest_asteroid["dist"]
+            vert_offset = closest_asteroid["vert_offset"]
+            if nearest_dist is None:
                 thrust = 0.0
             else:
                 self.avoidance_sim.input['distance'] = nearest_dist
@@ -514,18 +503,12 @@ class ProjectController(KesslerController):
                 thrust = self.avoidance_sim.output['thrust'] * 0.2  # Less aggressive when safe
             
             # Target the closest asteroid
-            closest_asteroid = self.find_closest_asteroid(ship_x, ship_y, game_state)
             if closest_asteroid is not None:
                 turn_rate, fire = self.find_turn_rate_fire(ship_x, ship_y, closest_asteroid, ship_state)
             else:
                 turn_rate, fire = 0, False
 
         # Mine deployment logic
-        if self.max_bullet_count is None:
-            self.max_bullet_count = current_ammo
-
-        asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
-        mass_density = asteroid_data["mass_density"]
         # ammo_ratio = current_ammo / self.max_bullet_count if current_ammo != -1 else 1.0
 
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
