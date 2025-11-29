@@ -23,20 +23,20 @@ class ProjectController(KesslerController):
         self.max_bullet_count = None
 
         self.setup_mine_control()
-        self.setup_fire_control()
+        self.setup_agro_fire_control()
         self.setup_thrust_avoidance_control()
         self.setup_turn_and_fire_control() 
 
     # ---------------------- MINE CONTROL ---------------------- #
     def setup_mine_control(self):
-        ship_thrust = ctrl.Antecedent(np.arange(0, 480, 1), 'ship_thrust')
+        ship_velocity = ctrl.Antecedent(np.arange(0, 480, 1), 'ship_velocity')
         mass_density = ctrl.Antecedent(np.arange(0, 0.1, 0.001), 'mass_density')
         drop_mine = ctrl.Consequent(np.arange(-1, 1, 0.1), 'drop_mine')
 
         # Fuzzy sets for ship thrust
-        ship_thrust['S'] = fuzz.zmf(ship_thrust.universe, 0, 125)
-        ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [75, 200, 300])
-        ship_thrust['L'] = fuzz.smf(ship_thrust.universe, 200, 480)
+        ship_velocity['S'] = fuzz.zmf(ship_velocity.universe, 0, 105)
+        ship_velocity['M'] = fuzz.trimf(ship_velocity.universe, [75, 200, 300])
+        ship_velocity['L'] = fuzz.smf(ship_velocity.universe, 200, 480)
 
         # Fuzzy sets for mass density
         mass_density['S'] = fuzz.zmf(mass_density.universe, 0, 0.01)
@@ -49,16 +49,16 @@ class ProjectController(KesslerController):
 
         # Declare fuzzy rules
         rules = [
-            ctrl.Rule(ship_thrust['S'], drop_mine['N']),
-            ctrl.Rule(ship_thrust['M'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
-            ctrl.Rule(ship_thrust['L'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
-            ctrl.Rule((ship_thrust['M'] | ship_thrust['L']) & mass_density['L'], drop_mine['Y']),
+            ctrl.Rule(ship_velocity['S'], drop_mine['N']),
+            ctrl.Rule(ship_velocity['M'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
+            ctrl.Rule(ship_velocity['L'] & (mass_density['S'] | mass_density['M']), drop_mine['N']),
+            ctrl.Rule((ship_velocity['M'] | ship_velocity['L']) & mass_density['L'], drop_mine['Y']),
         ]
 
         self.mine_control = ctrl.ControlSystem(rules)
 
-    # ---------------------- FIRE CONTROL ---------------------- #
-    def setup_fire_control(self):
+    # ---------------------- AGGRESSIVE FIRE CONTROL ---------------------- #
+    def setup_agro_fire_control(self):
         ammo = ctrl.Antecedent(np.arange(0, 1, 0.01), 'ammo')
         fire_gun = ctrl.Consequent(np.arange(-1, 1, 0.1), 'fire_gun')
         closest_a_dist = ctrl.Antecedent(np.arange(0, 1000, 1), 'closest_a_dist')
@@ -84,7 +84,7 @@ class ProjectController(KesslerController):
             ctrl.Rule(ammo['L'] & closest_a_dist['S'], fire_gun['Y'])
         ]
 
-        self.fire_control = ctrl.ControlSystem(rules)
+        self.agro_fire_control = ctrl.ControlSystem(rules)
 
     # ---------------------- THRUST CONTROL ---------------------- #
     def setup_thrust_control(self):
@@ -489,17 +489,27 @@ class ProjectController(KesslerController):
 
     def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool, bool]:
         
+        # Collect required initial data
         ship_x = ship_state["position"][0]
         ship_y = ship_state["position"][1]
+        ship_vel_x, ship_vel_y = ship_state["velocity"]
         current_ammo = ship_state["bullets_remaining"]
+
+        asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
+        mass_density = asteroid_data["mass_density"]
+        closest_asteroid = asteroid_data["closest_asteroid"]
+        ship_vel_magnitude = math.sqrt((ship_vel_x) ** 2 + (ship_vel_y ** 2))
 
         if self.max_bullet_count is None:
             # Avoid division by zero later
             self.max_bullet_count = current_ammo if current_ammo > 0 else 1
 
-        asteroid_data = self.collect_asteroid_data(game_state["asteroids"], ship_x, ship_y)
-        mass_density = asteroid_data["mass_density"]
-        closest_asteroid = asteroid_data["closest_asteroid"]
+        # Ammo ratio: if infinite ammo (-1), treat as full (1.0)
+        ammo_ratio = 0.0
+        if current_ammo == -1:
+            ammo_ratio = 1.0
+        else:
+            ammo_ratio = current_ammo / self.max_bullet_count if self.max_bullet_count > 0 else 0.0
 
         # Categorize all asteroids by threat level
         critical_threats, moderate_threats, safe_targets = self.categorize_asteroids(ship_state, game_state)
@@ -542,22 +552,24 @@ class ProjectController(KesslerController):
             
             # Target the closest asteroid
             if closest_asteroid is not None:
-                turn_rate, fire = self.find_turn_rate_fire(ship_x, ship_y, closest_asteroid, ship_state)
+                turn_rate = self.find_turn_rate_fire(ship_x, ship_y, closest_asteroid, ship_state)[0]
+
+                # Use aggressive fire system when ship is safe
+                agro_fire = ctrl.ControlSystemSimulation(self.agro_fire_control, flush_after_run=1)
+                agro_fire.inputs({
+                    'ammo': ammo_ratio,
+                    'closest_a_dist': closest_asteroid["dist"]
+                })
+                agro_fire.compute()
+                fire = True if agro_fire.output['fire_gun'] >= 0 else False
             else:
                 turn_rate, fire = 0, False
-
-        # Ammo ratio: if infinite ammo (-1), treat as full (1.0)
-        ammo_ratio = 0.0
-        if current_ammo == -1:
-            ammo_ratio = 1.0
-        else:
-            ammo_ratio = current_ammo / self.max_bullet_count if self.max_bullet_count > 0 else 0.0
 
         # Mine drop logic
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
         mine_sys.inputs({
             'mass_density': mass_density,
-            'ship_thrust': abs(thrust)
+            'ship_velocity': ship_vel_magnitude
         })
         mine_sys.compute()
         drop_mine = True if mine_sys.output['drop_mine'] >= 0 else False
