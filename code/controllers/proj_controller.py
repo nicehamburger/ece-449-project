@@ -29,14 +29,14 @@ class ProjectController(KesslerController):
 
     # ---------------------- MINE CONTROL ---------------------- #
     def setup_mine_control(self):
-        ship_velocity = ctrl.Antecedent(np.arange(0, 480, 1), 'ship_velocity')
+        ship_velocity = ctrl.Antecedent(np.arange(0, 381, 1), 'ship_velocity')
         mass_density = ctrl.Antecedent(np.arange(0, 0.1, 0.001), 'mass_density')
         drop_mine = ctrl.Consequent(np.arange(-1, 1, 0.1), 'drop_mine')
 
-        # Fuzzy sets for ship thrust
-        ship_velocity['S'] = fuzz.zmf(ship_velocity.universe, 0, 105)
-        ship_velocity['M'] = fuzz.trimf(ship_velocity.universe, [75, 200, 300])
-        ship_velocity['L'] = fuzz.smf(ship_velocity.universe, 200, 480)
+        # Fuzzy sets for ship velocity — rescaled for max = 380
+        ship_velocity['S'] = fuzz.zmf(ship_velocity.universe, 0, 100)
+        ship_velocity['M'] = fuzz.trimf(ship_velocity.universe, [60, 180, 280])
+        ship_velocity['L'] = fuzz.smf(ship_velocity.universe, 220, 380)
 
         # Fuzzy sets for mass density
         mass_density['S'] = fuzz.zmf(mass_density.universe, 0, 0.01)
@@ -93,7 +93,7 @@ class ProjectController(KesslerController):
         vert_offset = ctrl.Antecedent(np.arange(-500, 501, 1), 'vert_offset')
 
         # Fuzzy output variable
-        thrust = ctrl.Consequent(np.arange(-480, 481, 1), 'thrust')
+        thrust = ctrl.Consequent(np.arange(-380, 381, 1), 'thrust')
 
         # Distance membership functions
         distance['near'] = fuzz.trimf(distance.universe, [0, 0, 300])
@@ -105,12 +105,12 @@ class ProjectController(KesslerController):
         vert_offset['center'] = fuzz.trimf(vert_offset.universe, [-50, 0, 50])
         vert_offset['above'] = fuzz.trimf(vert_offset.universe, [0, 500, 500])
 
-        # Thrust membership functions
-        thrust['high_up'] = fuzz.trimf(thrust.universe, [150, 480, 480])
-        thrust['medium_up'] = fuzz.trimf(thrust.universe, [50, 200, 350])
-        thrust['none'] = fuzz.trimf(thrust.universe, [-50, 0, 50])
-        thrust['medium_down'] = fuzz.trimf(thrust.universe, [-350, -200, -50])
-        thrust['high_down'] = fuzz.trimf(thrust.universe, [-480, -480, -150])
+        # Thrust membership functions (scaled to max |thrust| = 380)
+        thrust['high_up']     = fuzz.trimf(thrust.universe, [140, 380, 380])
+        thrust['medium_up']   = fuzz.trimf(thrust.universe, [40,  160, 280])
+        thrust['none']        = fuzz.trimf(thrust.universe, [-40, 0,   40])
+        thrust['medium_down'] = fuzz.trimf(thrust.universe, [-280, -160, -40])
+        thrust['high_down']   = fuzz.trimf(thrust.universe, [-380, -380, -140])
 
         thrust_rules = [
             ctrl.Rule(distance['near'] & vert_offset['above'], thrust['high_down']),
@@ -169,7 +169,7 @@ class ProjectController(KesslerController):
         vert_offset = ctrl.Antecedent(np.arange(-500, 501, 1), 'vert_offset')
 
         # Fuzzy output variable
-        thrust = ctrl.Consequent(np.arange(-480, 481, 1), 'thrust')
+        thrust = ctrl.Consequent(np.arange(-380, 381, 1), 'thrust')
 
         # Distance membership functions
         distance['near'] = fuzz.trimf(distance.universe, [0, 0, 300])
@@ -181,12 +181,12 @@ class ProjectController(KesslerController):
         vert_offset['center'] = fuzz.trimf(vert_offset.universe, [-50, 0, 50])
         vert_offset['above'] = fuzz.trimf(vert_offset.universe, [0, 500, 500])
 
-        # Thrust membership functions
-        thrust['high_up'] = fuzz.trimf(thrust.universe, [150, 480, 480])
-        thrust['medium_up'] = fuzz.trimf(thrust.universe, [50, 200, 350])
-        thrust['none'] = fuzz.trimf(thrust.universe, [-50, 0, 50])
-        thrust['medium_down'] = fuzz.trimf(thrust.universe, [-350, -200, -50])
-        thrust['high_down'] = fuzz.trimf(thrust.universe, [-480, -480, -150])
+        # Thrust membership functions (scaled to max |thrust| = 380)
+        thrust['high_up']     = fuzz.trimf(thrust.universe, [140, 380, 380])
+        thrust['medium_up']   = fuzz.trimf(thrust.universe, [40,  160, 280])
+        thrust['none']        = fuzz.trimf(thrust.universe, [-40, 0,   40])
+        thrust['medium_down'] = fuzz.trimf(thrust.universe, [-280, -160, -40])
+        thrust['high_down']   = fuzz.trimf(thrust.universe, [-380, -380, -140])
 
         # Define fuzzy rules
         rules = [
@@ -347,11 +347,8 @@ class ProjectController(KesslerController):
         The function computes simple kinematic predictions:
         - dx, dy: vector from ship to asteroid
         - dvx, dvy: relative velocity (asteroid - ship)
-        - tca: time to closest approach (project position onto relative velocity) -- Not sure
+        - tca: time to closest approach (project position onto relative velocity)
         - distance_at_tca: distance between ship and asteroid at tca
-
-        We use a safety buffer (asteroid radius + 30) to be conservative when
-        deciding whether an asteroid is dangerous.
         """
         ship_x, ship_y = ship_state["position"]
         ship_vel_x, ship_vel_y = ship_state["velocity"]
@@ -369,38 +366,63 @@ class ProjectController(KesslerController):
             dvx = asteroid["velocity"][0] - ship_vel_x
             dvy = asteroid["velocity"][1] - ship_vel_y
 
-            # Compute time to closest approach (tca). If relative velocity is
-            # zero (denominator==0) we cannot compute a meaningful tca, so
-            # we leave it at 0 which conservatively treats current geometry.
+            # CHANGES MADE
+
+            # TCA (Time of Closest Approach) - Time at which Asteroid is Closest to ship ; Initialized to 0
             tca = 0
+            # Cannot calculate tca if relative velocity is zero (denominator = 0)
             denominator = dvx**2 + dvy**2
-            if denominator > 0:
-                # Projection formula for when distance is smallest; clamp to
-                # zero so we don't consider times in the past.
-                tca = max(0, -(dx * dvx + dy * dvy) / denominator)
 
-            # Distance between ship and asteroid at that closest approach time
-            distance_at_tca = math.sqrt((dx + dvx * tca) ** 2 + (dy + dvy * tca) ** 2)
-
-            # A small safety buffer around the asteroid to be extra cautious
-            safe_distance = asteroid["radius"] + 25
-
-            # Package values so callers can inspect the reason for classification
+            # Initial Values for storing threat info of each asteroid
             threat_info = {
                 "asteroid": asteroid,
-                "time_to_collision": tca,
-                "distance_at_tca": distance_at_tca,
+                "time_to_collision": None,
+                "distance_at_tca": None,
                 "current_distance": math.sqrt(dx**2 + dy**2),
                 "threat_level": 0,
             }
 
-            # If they come closer than our safe distance, classify by how
-            # soon that occurs.
-            if distance_at_tca < safe_distance:
-                if tca < 1.0:  # Critical: collision in less than 1 second
+            # Define safe distance based on asteroid size - larger asteroids can break into smaller ones
+            if asteroid['radius'] >= 16:
+                safe_distance = asteroid["radius"] + 50
+            else:
+                safe_distance = asteroid["radius"] + 30
+
+            # If relative velocity is extremely small, asteroid is approaching very slowly - handle based on distance alone
+            if denominator < 1e-1:
+                tca = 0         # closest approach is effectively now
+                distance_at_tca = math.sqrt(dx*dx + dy*dy)
+                
+                # Dangerous if within safety boundary
+                if distance_at_tca < safe_distance:
+                    threat_info["time_to_collision"] = 0
+                    threat_info["distance_at_tca"]  = distance_at_tca
+                    # threat_info["current_distance"] = distance_at_tca
                     threat_info["threat_level"] = 2
                     critical_threats.append(threat_info)
-                elif tca < 3.0:  # Moderate: collision in 1-3 seconds
+                    continue
+                else:
+                    safe_targets.append(threat_info)
+                    continue
+
+            if denominator > 0:
+                # r = (dx,dy) is the vector from ship to asteroid and v_rel = (dvx,dvy) is relative velocity.
+                # This comes from projecting r onto v_rel: it finds the time when the separation vector is perpendicular to the relative velocity (i.e., closest point).
+                # max(0, ...) prevents negative times. If the projection gives a negative result, the closest-approach time is in the past, so we treat the closest approach as right now (t = 0).
+                # If the asteroid is heading toward your ship, the dot product r·v_rel will be negative and tca positive. If it's moving away, tca will be negative.
+                tca = max(0, -(dx * dvx + dy * dvy) / denominator)
+                threat_info["time_to_collision"] = tca
+
+            # Distance between ship and asteroid at that closest approach time
+            distance_at_tca = math.sqrt((dx + dvx * tca) ** 2 + (dy + dvy * tca) ** 2)
+            threat_info["distance_at_tca"] = distance_at_tca
+
+            # If they come closer than our safe distance, classify by how soon that occurs.
+            if distance_at_tca < safe_distance:
+                if tca < 2.0:  # Critical: collision in less than 2 seconds
+                    threat_info["threat_level"] = 2
+                    critical_threats.append(threat_info)
+                elif tca < 3.0:  # Moderate: collision in 2-3 seconds
                     threat_info["threat_level"] = 1
                     moderate_threats.append(threat_info)
             else:
@@ -415,17 +437,17 @@ class ProjectController(KesslerController):
         return critical_threats, moderate_threats, safe_targets
     
     def calculate_evasion_maneuver(self, ship_state: Dict, critical_threats: list, moderate_threats: list) -> Tuple[float, float, bool]:
-        """
-        Calculate evasion maneuver when threats are present
-        Returns: (thrust, turn_rate, fire_while_evading)
-        """
+        # Calculate evasion maneuver when threats are present ; Returns: (thrust, turn_rate, fire_while_evading)
+        
+        # No threats, no evasion needed
         if not critical_threats and not moderate_threats:
             return 0, 0, True  # No evasion needed
         
+        # Ship state
         ship_x, ship_y = ship_state["position"]
         ship_heading = math.radians(ship_state["heading"])
         
-        # Combine all threats, weighted by criticality
+        # Combine all threats, Each threat is weighted - critical threats are three times more important than moderate ones.
         all_threats = []
         for threat in critical_threats:
             all_threats.append((threat, 3.0))  # High weight for critical
@@ -433,9 +455,11 @@ class ProjectController(KesslerController):
             all_threats.append((threat, 1.0))  # Lower weight for moderate
         
         # Calculate threat vector (weighted average of threat directions)
-        threat_vector_x, threat_vector_y = 0, 0
+        threat_vector_x = 0
+        threat_vector_y = 0
         total_weight = 0
         
+        # Each threat represents a single asteroid
         for threat, weight in all_threats:
             asteroid = threat["asteroid"]
             dx = asteroid["position"][0] - ship_x
@@ -443,24 +467,32 @@ class ProjectController(KesslerController):
             distance = math.sqrt(dx**2 + dy**2)
             
             if distance > 0:
-                # Normalize and weight by threat level and proximity
-                proximity_factor = 1.0 / (distance + 1)
-                threat_vector_x += (dx / distance) * weight * proximity_factor
-                threat_vector_y += (dy / distance) * weight * proximity_factor
-                total_weight += weight * proximity_factor
+                # Proximity factor to prioritize closer threats - pf larger when asteroid is closer
+                proximity_factor = 1.0 / (distance + 1) 
+                # Normalize direction, scale by weight (3 for critical, 1 for moderate) and proximity (closeness)
+                # Basically, Add a contribution to the overall threat vector in the direction of this asteroid, scaled by how important it is and how close it is.
+                threat_vector_x += (dx / distance) * weight * proximity_factor  # threat contrib. of this asteroid in x direction
+                threat_vector_y += (dy / distance) * weight * proximity_factor  # threat contrib. of this asteroid in y direction
+                # Keeps track of sum of all threat contributions for normalization of threat vector later (to get an average direction)
+                total_weight += weight * proximity_factor  # total threat weight contribution from this asteroid
         
+        # If we have any threats, compute evasion direction
         if total_weight > 0:
-            threat_vector_x /= total_weight
-            threat_vector_y /= total_weight
+            # Normalize threat vector to get average threat direction
+            threat_vector_x /= total_weight # average x component of threat direction
+            threat_vector_y /= total_weight # average y component of threat direction
+            # Calculate angle of threat vector - basically, an angle pointing toward the combined threat direction - 'center of all threats'
             threat_direction = math.atan2(threat_vector_y, threat_vector_x)
             
-            # Calculate evasion direction (perpendicular to threat)
-            evasion_direction = threat_direction + math.pi/2  # 90 degrees right
+            # Calculate evasion direction (perpendicular to threat) - rotates the threat vector by 90° clockwise
+            evasion_direction = threat_direction + math.pi/2
             
-            # Choose the evasion direction that requires less turning
+            # Calculate angle difference between current heading and evasion direction
             current_to_evasion = evasion_direction - ship_heading
+            # Wrap to (-pi, pi) - to get the smallest angle difference ie. shortest turn direction required
             current_to_evasion = (current_to_evasion + math.pi) % (2 * math.pi) - math.pi
-            
+
+            # Choose the evasion direction that requires less turning 
             # If turning left is easier, use left evasion instead
             if abs(current_to_evasion) > math.pi/2:
                 evasion_direction = threat_direction - math.pi/2  # 90 degrees left
@@ -468,11 +500,15 @@ class ProjectController(KesslerController):
                 current_to_evasion = (current_to_evasion + math.pi) % (2 * math.pi) - math.pi
             
             # Calculate turn rate
+            # Converts angle difference to degrees, multiplies by 30 to scale it to turn rate, and clamps to +-180°
             turn_rate = np.clip(math.degrees(current_to_evasion) * 30, -180, 180)
             
             # Calculate thrust - more aggressive for critical threats
-            base_thrust = 200 if critical_threats else 100
+            base_thrust = 200 if critical_threats else 75
+            # Scale thrust based on number of critical threats (more threats - more thrust)
             thrust = base_thrust * (1.0 + min(1.0, len(critical_threats) * 0.5))
+            if thrust > 300:
+                thrust = 380  # Cap thrust to max
             
             # Only fire while evading if we have moderate threats but no critical ones
             fire_while_evading = (len(critical_threats) == 0 and len(moderate_threats) > 0)
@@ -516,21 +552,16 @@ class ProjectController(KesslerController):
         
         # PRIORITY 1: Evasion if threats exist
         if critical_threats or moderate_threats:
-            thrust, turn_rate, fire_while_evading = self.calculate_evasion_maneuver(
-                ship_state, critical_threats, moderate_threats
-            )
+            thrust, turn_rate, fire_while_evading = self.calculate_evasion_maneuver(ship_state, critical_threats, moderate_threats)
             
             # If we can fire while evading, target the most dangerous shootable asteroid
             if fire_while_evading and safe_targets:
                 best_target_old = safe_targets[0]  # Closest safe target
                 best_target = {"aster": None, "dist": float('inf')}
-        
                 best_target["aster"] = safe_targets[0]["asteroid"]
                 best_target["dist"]  = self.calc_dist(ship_x, ship_y, best_target["aster"])
 
-                targeting_turn_rate, targeting_fire = self.find_turn_rate_fire(
-                    ship_x, ship_y, best_target, ship_state
-                )
+                targeting_turn_rate, targeting_fire = self.find_turn_rate_fire(ship_x, ship_y, best_target, ship_state)
                 # Blend evasion and targeting (leaning toward evasion)
                 turn_rate = 0.7 * turn_rate + 0.3 * targeting_turn_rate
                 fire = targeting_fire
@@ -539,7 +570,7 @@ class ProjectController(KesslerController):
         
         # PRIORITY 2: Offensive targeting when safe
         else:
-            # Use existing avoidance for thrust (but less aggressive when safe)
+            # Use avoidance thrust system to stay safe & target closest asteroid
             nearest_dist = closest_asteroid["dist"]
             vert_offset = closest_asteroid["vert_offset"]
             if nearest_dist is None:
@@ -564,6 +595,9 @@ class ProjectController(KesslerController):
                 fire = True if agro_fire.output['fire_gun'] >= 0 else False
             else:
                 turn_rate, fire = 0, False
+
+            if abs(turn_rate) > 120:
+                fire = False  # stop shooting when making big turns
 
         # Mine drop logic
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
