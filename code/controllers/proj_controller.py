@@ -11,6 +11,46 @@ import skfuzzy as fuzz
 from typing import Dict, Tuple
 from skfuzzy import control as ctrl
 from kesslergame import KesslerController
+# import EasyGA
+# import time
+
+
+
+# def generateThrustChromosome():
+#     sortedArr = np.sort(np.random.randint(-380, 380, 15)).tolist()
+#     b = 100
+#
+#     BackwardStrong = [sortedArr[0]-b, sortedArr[1], sortedArr[2]+b]
+#     BackwardWeak   = [sortedArr[3]-b, sortedArr[4], sortedArr[5]+b]
+#     Neutral        = [sortedArr[6]-b, sortedArr[7], sortedArr[8]+b]
+#     ForwardWeak    = [sortedArr[9]-b, sortedArr[10], sortedArr[11]+b]
+#     ForwardStrong  = [sortedArr[12]-b, sortedArr[13], sortedArr[14]+b]
+#
+#     chromosome = BackwardStrong + BackwardWeak + Neutral + ForwardWeak + ForwardStrong
+#     return chromosome
+#
+# def fitness(chromosome):
+#     try:
+#         my_test_scenario = Scenario(...)
+#         game = TrainerEnvironment(settings=game_settings)
+#         score, _ = game.run(scenario=my_test_scenario,
+#                             controllers=[GroupControllerGA(chromosome.gene_value_list[0])])
+#         total_asteroids_hit = [team.asteroids_hit for team in score.teams]
+#         return total_asteroids_hit[0]
+#     except Exception as e:
+#         print(f"Exception in GA fitness: {e}")
+#
+# def findBestChromosome():
+#     ga = EasyGA.GA()
+#     ga.gene_impl = lambda: generateThrustChromosome()
+#     ga.chromosome_length = 1
+#     ga.population_size = 10
+#     ga.target_fitness_type = 'max'
+#     ga.generation_goal = 2
+#     ga.fitness_function_impl = fitness
+#     ga.evolve()
+#     return ga.population[0]
+
 
 
 class ProjectController(KesslerController):
@@ -26,6 +66,7 @@ class ProjectController(KesslerController):
         self.setup_agro_fire_control()
         self.setup_thrust_avoidance_control()
         self.setup_turn_and_fire_control() 
+
 
     # ---------------------- MINE CONTROL ---------------------- #
     def setup_mine_control(self):
@@ -163,8 +204,6 @@ class ProjectController(KesslerController):
         }
 
     def setup_thrust_avoidance_control(self):
-        # Fuzzy input variables
-        # Fuzzy input variables
         distance = ctrl.Antecedent(np.arange(0, 1001, 1), 'distance')
         vert_offset = ctrl.Antecedent(np.arange(-500, 501, 1), 'vert_offset')
 
@@ -172,14 +211,14 @@ class ProjectController(KesslerController):
         thrust = ctrl.Consequent(np.arange(-380, 381, 1), 'thrust')
 
         # Distance membership functions
-        distance['near'] = fuzz.trimf(distance.universe, [0, 0, 300])
-        distance['mid'] = fuzz.trimf(distance.universe, [100, 500, 800])
+        distance['near'] = fuzz.trimf(distance.universe, [0, 0, 150])
+        distance['mid'] = fuzz.trimf(distance.universe, [150, 300, 600])
         distance['far'] = fuzz.trimf(distance.universe, [500, 1000, 1000])
 
         # Vertical offset membership functions
-        vert_offset['below'] = fuzz.trimf(vert_offset.universe, [-500, -500, 0])
+        vert_offset['below'] = fuzz.trimf(vert_offset.universe, [-300, -300, 0])
         vert_offset['center'] = fuzz.trimf(vert_offset.universe, [-50, 0, 50])
-        vert_offset['above'] = fuzz.trimf(vert_offset.universe, [0, 500, 500])
+        vert_offset['above'] = fuzz.trimf(vert_offset.universe, [0, 300, 300])
 
         # Thrust membership functions (scaled to max |thrust| = 380)
         thrust['high_up']     = fuzz.trimf(thrust.universe, [140, 380, 380])
@@ -419,10 +458,10 @@ class ProjectController(KesslerController):
 
             # If they come closer than our safe distance, classify by how soon that occurs.
             if distance_at_tca < safe_distance:
-                if tca < 2.0:  # Critical: collision in less than 2 seconds
+                if tca < 1:  # Critical: collision in less than 2 seconds
                     threat_info["threat_level"] = 2
                     critical_threats.append(threat_info)
-                elif tca < 3.0:  # Moderate: collision in 2-3 seconds
+                elif tca < 2:  # Moderate: collision in 2-3 seconds
                     threat_info["threat_level"] = 1
                     moderate_threats.append(threat_info)
             else:
@@ -599,6 +638,9 @@ class ProjectController(KesslerController):
             if abs(turn_rate) > 120:
                 fire = False  # stop shooting when making big turns
 
+
+
+
         # Mine drop logic
         mine_sys = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
         mine_sys.inputs({
@@ -614,3 +656,5 @@ class ProjectController(KesslerController):
     @property
     def name(self) -> str:
         return "Project Controller"
+    
+
