@@ -14,6 +14,33 @@ from skfuzzy import control as ctrl
 from kesslergame import KesslerController, Scenario, TrainerEnvironment
 import EasyGA
 
+# Best chromosome obtained from running genetic algorithm with
+# population = 30, generations = 10
+BEST_CHROMOSOME = [
+    -380.00000, -380.00000, -241.00000,
+    -380.00000, -241.00000, -98.00000,
+    -241.00000, -98.00000, 265.00000,
+    -98.00000, 265.00000, 380.00000,
+    265.00000, 380.00000, 380.00000,
+    0.00000, 0.00000, 37.00000,
+    0.00000, 37.00000, 380.00000,
+    37.00000, 380.00000, 380.00000,
+    0.00000, 0.00000, 0.03159,
+    0.00000, 0.03159, 0.10000,
+    0.03159, 0.10000, 0.10000,
+    0.00000, 0.00000, 0.24441,
+    0.00000, 0.24441, 1.00000,
+    0.24441, 1.00000, 1.00000,
+    0.00000, 0.00000, 608.00000,
+    0.00000, 608.00000, 1000.0000,
+    608.00000, 1000.00000, 1000.00000,
+    0.00000, 0.00000, 926.00000,
+    0.00000, 926.00000, 1000.00000,
+    926.00000, 1000.00000, 1000.00000,
+    0.00000, 0.00000, 0.67699,
+    0.00000, 0.67699, 1.00000,
+    0.67699, 1.00000, 1.00000
+]
 
 # ---------------------------------
 # Genetic Algorithm Implementation
@@ -146,7 +173,10 @@ class ProjectController(KesslerController):
         self.eval_frames = 0
         self.max_bullet_count = None
 
-        self.chromosome = [gene.value for gene in chromosome.gene_list]
+        if chromosome:
+            self.chromosome = [gene.value for gene in chromosome.gene_list]
+        else:
+            self.chromosome = BEST_CHROMOSOME
 
         self.setup_mine_control()
         self.setup_agro_fire_control()

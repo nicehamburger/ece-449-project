@@ -18,5 +18,5 @@ Scenarios are essentially drivers that run the game.
 Import and run desired scenario below.
 """
 if __name__ == "__main__":
-    # test_scenario.run()
-    run_training(population_size=30, generation_goal=10)
+    test_scenario.run()
+    # run_training(population_size=30, generation_goal=10)
