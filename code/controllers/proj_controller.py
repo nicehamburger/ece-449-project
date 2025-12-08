@@ -6,6 +6,7 @@
 # Zeeshan Haque
 
 import math
+import random
 import numpy as np
 import skfuzzy as fuzz
 from typing import Dict, Tuple
@@ -18,39 +19,73 @@ import EasyGA
 # Genetic Algorithm Implementation
 # ---------------------------------
 
-def get_sorted_genes(min_val, max_val, num_points):
+def gene_generation(universe_min, universe_max, n):
+    """
+    Generates a gene for n fuzzy membership functions.
+    
+    - If inputs are integers, generates integer genes.
+    - If inputs are floats, generates float genes.
+    - Ensures valid fuzzy geometry (Left <= Center <= Right).
+    """
+    
+    # Check if we should use float logic or integer logic
+    # If ANY input is a float, we treat the whole universe as continuous (float)
+    is_float = isinstance(universe_min, float) or isinstance(universe_max, float)
 
-    if isinstance(min_val, float) or isinstance(max_val, float):
-        # Use uniform for floats (like mass_density)
-        genes = np.random.uniform(min_val, max_val, num_points)
-    else:
-        # Use randint for integers (like velocity)
-        genes = np.random.randint(min_val, max_val, num_points)
-    return np.sort(genes).tolist()
+    if n < 2:
+        n = 2
+
+    internal_points = []
+    
+    for _ in range(n - 2):
+        if is_float:
+            val = random.uniform(universe_min, universe_max)
+        else:
+            val = random.randint(universe_min, universe_max)
+        internal_points.append(val)
+    
+    internal_points.sort()
+    
+    # Combine to get all peaks: [min, p1, p2, ..., max]
+    points = [universe_min] + internal_points + [universe_max]
+    
+    genes = []
+    
+    # create left shoulder
+    genes.extend([points[0], points[0], points[1]])
+    
+    # create internal triangles
+    for i in range(1, n - 1):
+        genes.extend([points[i-1], points[i], points[i+1]])
+        
+    # create right shoulder
+    genes.extend([points[n-2], points[n-1], points[n-1]])
+    
+    return genes
 
 # Chromosome generation function
 def generate_full_chromosome():
     chromosome = []
     # Thrust Control - Thrust
-    chromosome.extend(get_sorted_genes(-380, 380, 15))
+    chromosome.extend(gene_generation(-380, 380, 5))
 
     # Mine Control - Ship Velocity
-    chromosome.extend(get_sorted_genes(0, 380, 7))
+    chromosome.extend(gene_generation(0, 380, 3))
 
     # Mine Control - Mass Density
-    chromosome.extend(get_sorted_genes(0.0, 0.1, 7))
+    chromosome.extend(gene_generation(0.0, 0.1, 3))
 
     # Fire Control - Ammo
-    chromosome.extend(get_sorted_genes(0.0, 1.0, 7))
+    chromosome.extend(gene_generation(0.0, 1.0, 3))
 
     # Fire Control - Closest Asteroid Distance
-    chromosome.extend(get_sorted_genes(0, 1000, 7))
+    chromosome.extend(gene_generation(0, 1000, 3))
 
     # Thrust Control - Distance
-    chromosome.extend(get_sorted_genes(0, 1000, 9))
+    chromosome.extend(gene_generation(0, 1000, 3))
 
     # Turn/Fire Control - Bullet Time
-    chromosome.extend(get_sorted_genes(0.0, 1.0, 8))
+    chromosome.extend(gene_generation(0.0, 1.0, 3))
 
     return chromosome
 
@@ -80,14 +115,16 @@ def fitness(chromosome):
         total_asteroids_hit = [team.asteroids_hit for team in score.teams]
         return total_asteroids_hit[0]
     except Exception as e:
-        print(f"Exception in GA fitness: {e}")
+        # Sometimes generated membership functions are not perfect
+        # Assign fitness of 0 to invalid membership functions and continue
+        print(f"Exception in GA fitness: {e}; skipping chromosome")
         return 0
 
 # Function to run the genetic algorithm/find best chromosome
 def findBestChromosome(population_size=10, generation_goal=3):
     ga = EasyGA.GA()
     ga.chromosome_impl = generate_full_chromosome
-    ga.chromosome_length = 60
+    ga.chromosome_length = 69
     ga.population_size = population_size
     ga.target_fitness_type = 'max'
     ga.generation_goal = generation_goal
@@ -125,18 +162,16 @@ class ProjectController(KesslerController):
 
         # If chromosome provided, use chromosome values
         if (self.chromosome):
-            # 15 - 22 are ship velocity
-            sv_genes = self.chromosome[15:22]
-            # 22- 29 are mass density
-            md_genes = self.chromosome[22:29]
+            sv_genes = self.chromosome[15:24]
+            md_genes = self.chromosome[24:33]
 
-            ship_velocity['S'] = fuzz.zmf(ship_velocity.universe, sv_genes[0], sv_genes[1])
-            ship_velocity['M'] = fuzz.trimf(ship_velocity.universe, [sv_genes[2], sv_genes[3], sv_genes[4]])
-            ship_velocity['L'] = fuzz.smf(ship_velocity.universe, sv_genes[5], sv_genes[6])
+            ship_velocity['S'] = fuzz.trimf(ship_velocity.universe, [sv_genes[0], sv_genes[1], sv_genes[2]])
+            ship_velocity['M'] = fuzz.trimf(ship_velocity.universe, [sv_genes[3], sv_genes[4], sv_genes[5]])
+            ship_velocity['L'] = fuzz.trimf(ship_velocity.universe, [sv_genes[6], sv_genes[7], sv_genes[8]])
 
-            mass_density['S'] = fuzz.zmf(mass_density.universe, md_genes[0], md_genes[1])
-            mass_density['M'] = fuzz.trimf(mass_density.universe, [md_genes[2], md_genes[3], md_genes[4]])
-            mass_density['L'] = fuzz.smf(mass_density.universe, md_genes[5], md_genes[6])
+            mass_density['S'] = fuzz.trimf(mass_density.universe, [md_genes[0], md_genes[1], md_genes[2]])
+            mass_density['M'] = fuzz.trimf(mass_density.universe, [md_genes[3], md_genes[4], md_genes[5]])
+            mass_density['L'] = fuzz.trimf(mass_density.universe, [md_genes[6], md_genes[7], md_genes[8]])
         # Use default values
         else:
             ship_velocity['S'] = fuzz.zmf(ship_velocity.universe, 0, 100)
@@ -169,16 +204,16 @@ class ProjectController(KesslerController):
 
         # If chromosome, use chromosome values
         if (self.chromosome):
-            a_genes = self.chromosome[29:36]
-            cad_genes = self.chromosome[36:43]
+            a_genes = self.chromosome[33:42]
+            cad_genes = self.chromosome[42:51]
 
-            ammo['L'] = fuzz.zmf(ammo.universe, a_genes[0], a_genes[1])
-            ammo['M'] = fuzz.trimf(ammo.universe, [a_genes[2], a_genes[3], a_genes[4]])
-            ammo['H'] = fuzz.smf(ammo.universe, a_genes[5], a_genes[6])
+            ammo['L'] = fuzz.trimf(ammo.universe, [a_genes[0], a_genes[1], a_genes[2]])
+            ammo['M'] = fuzz.trimf(ammo.universe, [a_genes[3], a_genes[4], a_genes[5]])
+            ammo['H'] = fuzz.trimf(ammo.universe, [a_genes[6], a_genes[7], a_genes[8]])
 
-            closest_a_dist['S'] = fuzz.zmf(closest_a_dist.universe, cad_genes[0], cad_genes[1])
-            closest_a_dist['M'] = fuzz.trimf(closest_a_dist.universe, [cad_genes[2], cad_genes[3], cad_genes[4]])
-            closest_a_dist['L'] = fuzz.smf(closest_a_dist.universe, cad_genes[5], cad_genes[6])
+            closest_a_dist['S'] = fuzz.trimf(closest_a_dist.universe, [cad_genes[0], cad_genes[1], cad_genes[2]])
+            closest_a_dist['M'] = fuzz.trimf(closest_a_dist.universe, [cad_genes[3], cad_genes[4], cad_genes[5]])
+            closest_a_dist['L'] = fuzz.trimf(closest_a_dist.universe, [cad_genes[6], cad_genes[7], cad_genes[8]])
         # Use default values
         else:
             ammo['L'] = fuzz.zmf(ammo.universe, 0, 0.2)
@@ -256,7 +291,7 @@ class ProjectController(KesslerController):
          # If chromosome, use chromosome values
         if (self.chromosome):
             t_genes = self.chromosome[0:15]
-            d_genes = self.chromosome[43:52]
+            d_genes = self.chromosome[51:60]
 
             distance['near'] = fuzz.trimf(distance.universe, [d_genes[0], d_genes[1], d_genes[2]])
             distance['mid'] = fuzz.trimf(distance.universe, [d_genes[3], d_genes[4], d_genes[5]])
@@ -303,11 +338,11 @@ class ProjectController(KesslerController):
         
         # If chromosome provided, use chromosome values
         if (self.chromosome):
-            bt_genes = self.chromosome[52:60]
+            bt_genes = self.chromosome[60:69]
 
             bullet_time['S'] = fuzz.trimf(bullet_time.universe,[bt_genes[0], bt_genes[1], bt_genes[2]])
             bullet_time['M'] = fuzz.trimf(bullet_time.universe, [bt_genes[3], bt_genes[4], bt_genes[5]])
-            bullet_time['L'] = fuzz.smf(bullet_time.universe, bt_genes[6], bt_genes[7])
+            bullet_time['L'] = fuzz.trimf(bullet_time.universe, [bt_genes[6], bt_genes[7], bt_genes[8]])
         # Use default values
         else:
             bullet_time['S'] = fuzz.trimf(bullet_time.universe,[0, 0, 0.05])
