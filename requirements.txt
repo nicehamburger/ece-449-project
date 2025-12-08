@@ -3,4 +3,5 @@ scikit-fuzzy
 scipy
 packaging
 networkx
-matplotlib
+matplotlib==3.10.7
+EasyGA
